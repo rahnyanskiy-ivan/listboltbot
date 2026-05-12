@@ -1,7 +1,6 @@
 import asyncio
 import re
-
-from index import token, id, password
+import os
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ChatType
@@ -19,9 +18,9 @@ from aiogram.types import (
 # CONFIG
 # =========================
 
-TOKEN = token
-GROUP_ID = id
-ADMIN_PASSWORD = password
+TOKEN = os.getenv("8205588708:AAF-cMpq38G-gR4xsdogcOw3h0iBoH3Zcck")
+GROUP_ID = int(os.getenv("-1003949873404"))
+ADMIN_PASSWORD = os.getenv("admin123")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
