@@ -18,9 +18,9 @@ from aiogram.types import (
 # CONFIG
 # =========================
 
-TOKEN = os.getenv("8205588708:AAF-cMpq38G-gR4xsdogcOw3h0iBoH3Zcck")
-GROUP_ID = int(os.getenv("-1003949873404"))
-ADMIN_PASSWORD = os.getenv("admin123")
+TOKEN = "8205588708:AAF-cMpq38G-gR4xsdogcOw3h0iBoH3Zcck"
+GROUP_ID = "-1003949873404"
+ADMIN_PASSWORD = "admin123"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
