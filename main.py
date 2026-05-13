@@ -1,7 +1,7 @@
 import asyncio
 import re
+import os
 
-from index import token, id, password
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ChatType
 from aiogram.fsm.context import FSMContext
@@ -18,9 +18,9 @@ from aiogram.types import (
 # CONFIG
 # =========================
 
-TOKEN = token
-GROUP_ID = id
-ADMIN_PASSWORD = password
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_ID = int(os.getenv("GROUP_ID"))
+ADMIN_PASSWORD = os.getenv("PASSWORD")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
