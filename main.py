@@ -30,13 +30,10 @@ dp = Dispatcher(storage=MemoryStorage())
 # =========================
 
 tasks = []
-draft_tasks = []
-
 TASK_MESSAGE_ID = None
 BOT_ID = None
+BOT_USERNAME = None
 
-admin_mode = False
-live_counter = 0
 
 # =========================
 # FSM
@@ -46,6 +43,7 @@ class AdminStates(StatesGroup):
     zone = State()
     task_type = State()
     scooters = State()
+
 
 # =========================
 # KEYBOARDS
@@ -60,6 +58,7 @@ def admin_menu():
         resize_keyboard=True
     )
 
+
 def zone_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -71,6 +70,7 @@ def zone_keyboard():
         ],
         resize_keyboard=True
     )
+
 
 def type_keyboard():
     return ReplyKeyboardMarkup(
@@ -84,6 +84,7 @@ def type_keyboard():
         resize_keyboard=True
     )
 
+
 def final_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -94,8 +95,9 @@ def final_keyboard():
         resize_keyboard=True
     )
 
+
 # =========================
-# TEXT BUILD
+# BUILD TEXT
 # =========================
 
 def build_text(data):
@@ -105,80 +107,90 @@ def build_text(data):
     data = sorted(data, key=lambda x: (int(x["zone"]), x["type"], x["scooter"]))
 
     zones = {}
-
     for t in data:
         zones.setdefault(t["zone"], {}).setdefault(t["type"], []).append(t)
 
     text = ""
-
     for zone in zones:
         text += f"Зона {zone}\n"
-
         for ttype in zones[zone]:
             text += f" {ttype}\n"
-
             for t in zones[zone][ttype]:
                 line = t["scooter"]
-
                 if t["status"]:
                     line += t["status"]
-
                 if t["link"]:
                     line += f" {t['link']}"
-
                 text += line + "\n"
-
             text += "\n"
 
     return text.strip()
 
-# =========================
-# STATUS CHECK
-# =========================
-
-def is_all_done():
-    if not tasks:
-        return False
-
-    for t in tasks:
-        if (t.get("status") or "").strip() not in ("✅", "❌"):
-            return False
-
-    return True
 
 # =========================
-# GROUP UPDATE
+# AUTO CLOSE (🔥 FIXED)
+# =========================
+
+def is_fully_closed():
+    return tasks and all(t["status"] in ("✅", "❌") for t in tasks)
+
+
+async def close_list():
+    global TASK_MESSAGE_ID, tasks
+
+    final_text = (
+        "@fir01, @F_E_2_1_N, список закритий!\n\n"
+        f"{build_text(tasks)}\n\n"
+        "Всім дякую!"
+    )
+
+    try:
+        if TASK_MESSAGE_ID:
+            await bot.delete_message(GROUP_ID, TASK_MESSAGE_ID)
+    except:
+        pass
+
+    msg = await bot.send_message(GROUP_ID, final_text)
+    TASK_MESSAGE_ID = msg.message_id
+
+    tasks.clear()
+
+
+# =========================
+# UPDATE GROUP
 # =========================
 
 async def update_group(force_new=False):
     global TASK_MESSAGE_ID
 
-    base_text = build_text(tasks + draft_tasks)
+    text = build_text(tasks)
 
-    # FORCE NEW MESSAGE (batch)
-    if force_new and TASK_MESSAGE_ID:
-        try:
-            await bot.delete_message(GROUP_ID, TASK_MESSAGE_ID)
-        except:
-            pass
+    if force_new:
+        if TASK_MESSAGE_ID:
+            try:
+                await bot.delete_message(GROUP_ID, TASK_MESSAGE_ID)
+            except:
+                pass
         TASK_MESSAGE_ID = None
 
-    # FIRST MESSAGE
     if not TASK_MESSAGE_ID:
-        msg = await bot.send_message(GROUP_ID, base_text)
+        msg = await bot.send_message(GROUP_ID, text)
         TASK_MESSAGE_ID = msg.message_id
-        return
+    else:
+        try:
+            await bot.edit_message_text(
+                chat_id=GROUP_ID,
+                message_id=TASK_MESSAGE_ID,
+                text=text
+            )
+        except:
+            msg = await bot.send_message(GROUP_ID, text)
+            TASK_MESSAGE_ID = msg.message_id
 
-    # EDIT MESSAGE (live mode)
-    try:
-        await bot.edit_message_text(
-            chat_id=GROUP_ID,
-            message_id=TASK_MESSAGE_ID,
-            text=base_text
-        )
-    except:
-        msg = await bot.send_message(GROUP_ID, base_text)
-        TASK_MESSAGE_ID = msg.message_id
+    # 🔥 FIX: AUTO CLOSE CHECK RETURNED
+    if is_fully_closed():
+        await close_list()
+
 
 # =========================
 # LOGIN
@@ -186,24 +198,23 @@ async def update_group(force_new=False):
 
 @dp.message(F.text == ADMIN_PASSWORD)
 async def login(message: Message):
-
-    global admin_mode
-
     if message.chat.type != ChatType.PRIVATE:
         return
 
-    admin_mode = True
     await message.answer("Адмін панель:", reply_markup=admin_menu())
 
+
 # =========================
-# CREATE LIST
+# CREATE
 # =========================
 
 @dp.message(F.text == "📦 Створити список")
 async def create(message: Message, state: FSMContext):
-    draft_tasks.clear()
+    tasks.clear()
+
     await message.answer("Оберіть район:", reply_markup=zone_keyboard())
     await state.set_state(AdminStates.zone)
+
 
 # =========================
 # ZONE
@@ -221,6 +232,7 @@ async def zone(message: Message, state: FSMContext):
     await message.answer("Оберіть тип задачі:", reply_markup=type_keyboard())
     await state.set_state(AdminStates.task_type)
 
+
 # =========================
 # TYPE
 # =========================
@@ -237,14 +249,13 @@ async def task_type(message: Message, state: FSMContext):
     await message.answer("Введіть самокати:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(AdminStates.scooters)
 
+
 # =========================
 # SCOOTERS
 # =========================
 
 @dp.message(AdminStates.scooters)
 async def scooters(message: Message, state: FSMContext):
-
-    global live_counter
 
     if message.text == "⬅️ Назад":
         await message.answer("Оберіть тип:", reply_markup=type_keyboard())
@@ -257,15 +268,23 @@ async def scooters(message: Message, state: FSMContext):
     for line in message.text.split("\n"):
         line = line.strip()
 
-        match = re.search(r"(\d{3}-\d{3})\s*([✅❌])?", line)
+        match = re.search(r"(\d{3}-\d{3})\s*([+\-]|❌|✅|\+\+|--)?", line)
         if not match:
             continue
 
         scooter = match.group(1)
-        status = match.group(2) or ""
+        symbol = match.group(2) or ""
+
+        if symbol in ("+", "++", "✅"):
+            status = "✅"
+        elif symbol in ("-", "--", "❌"):
+            status = "❌"
+        else:
+            status = ""
+
         link = line.replace(match.group(0), "").strip()
 
-        draft_tasks.append({
+        tasks.append({
             "zone": data["zone"],
             "type": data["task_type"],
             "scooter": scooter,
@@ -278,17 +297,6 @@ async def scooters(message: Message, state: FSMContext):
     await message.answer(f"Додано: {added}", reply_markup=final_keyboard())
     await state.clear()
 
-    live_counter += added
-
-    # LIVE UPDATE
-    if live_counter < 3:
-        await update_group(force_new=False)
-        return
-
-    # BATCH UPDATE (every 3)
-    if live_counter >= 3:
-        live_counter = 0
-        await update_group(force_new=True)
 
 # =========================
 # ADD MORE
@@ -299,6 +307,7 @@ async def add_more(message: Message, state: FSMContext):
     await message.answer("Оберіть район:", reply_markup=zone_keyboard())
     await state.set_state(AdminStates.zone)
 
+
 # =========================
 # PUBLISH
 # =========================
@@ -306,18 +315,9 @@ async def add_more(message: Message, state: FSMContext):
 @dp.message(F.text == "🚀 Опублікувати")
 async def publish(message: Message):
 
-    global tasks, draft_tasks, admin_mode, live_counter
-
-    tasks.extend(draft_tasks)
-    draft_tasks.clear()
-
-    live_counter = 0
-
-    await update_group()
-
-    admin_mode = True
-
+    await update_group(force_new=True)
     await message.answer("Опубліковано", reply_markup=admin_menu())
+
 
 # =========================
 # DELETE
@@ -326,14 +326,13 @@ async def publish(message: Message):
 @dp.message(F.text == "🗑 Видалити список")
 async def delete(message: Message):
 
-    global TASK_MESSAGE_ID, live_counter
+    global TASK_MESSAGE_ID, tasks
 
     tasks.clear()
-    draft_tasks.clear()
     TASK_MESSAGE_ID = None
-    live_counter = 0
 
     await message.answer("Список видалено", reply_markup=admin_menu())
+
 
 # =========================
 # GROUP HANDLER
@@ -342,25 +341,33 @@ async def delete(message: Message):
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
 async def group_handler(message: Message):
 
-    if not message.reply_to_message:
-        return
-
-    if message.reply_to_message.from_user.id != BOT_ID:
-        return
+    global TASK_MESSAGE_ID
 
     if not message.text:
         return
 
+    text_lower = message.text.lower()
+    mentioned = BOT_USERNAME and f"@{BOT_USERNAME.lower()}" in text_lower
+
     updated = False
 
+    # LIVE STATUS UPDATE
     for line in message.text.split("\n"):
         line = line.strip()
 
-        match = re.fullmatch(r"(\d{3}-\d{3})\s*([✅❌])", line)
+        match = re.search(r"(\d{3}-\d{3})\s*([+\-]|❌|✅|\+\+|--)?", line)
         if not match:
             continue
 
-        scooter, status = match.groups()
+        scooter = match.group(1)
+        symbol = match.group(2) or ""
+
+        if symbol in ("+", "++", "✅"):
+            status = "✅"
+        elif symbol in ("-", "--", "❌"):
+            status = "❌"
+        else:
+            continue
 
         for t in tasks:
             if t["scooter"] == scooter:
@@ -372,6 +379,15 @@ async def group_handler(message: Message):
         await asyncio.sleep(0.2)
         await update_group()
 
+    # @MENTION REFRESH
+    if mentioned:
+        try:
+            if TASK_MESSAGE_ID:
+                await bot.delete_message(GROUP_ID, TASK_MESSAGE_ID)
+        except:
+            pass
+
+        await update_group(force_new=True)
 # =========================
 # MAIN
 # =========================
