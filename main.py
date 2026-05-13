@@ -132,7 +132,7 @@ def build_text(data):
     return text.strip()
 
 # =========================
-# CHECK ALL DONE (FIXED)
+# CHECK ALL DONE
 # =========================
 
 def is_all_done():
@@ -152,9 +152,9 @@ def is_all_done():
 async def update_group():
     global TASK_MESSAGE_ID
 
-    base_text = build_text(tasks)
+    base_text = build_text(tasks + draft_tasks)
 
-    # 🔥 AUTO CLOSE
+    # AUTO CLOSE
     if tasks and is_all_done():
 
         final_text = (
@@ -173,12 +173,13 @@ async def update_group():
         TASK_MESSAGE_ID = msg.message_id
         return
 
-    # NORMAL UPDATE
+    # FIRST MESSAGE
     if not TASK_MESSAGE_ID:
         msg = await bot.send_message(GROUP_ID, base_text)
         TASK_MESSAGE_ID = msg.message_id
         return
 
+    # EDIT MESSAGE
     try:
         await bot.edit_message_text(
             chat_id=GROUP_ID,
@@ -195,6 +196,7 @@ async def update_group():
 
 @dp.message(F.text == ADMIN_PASSWORD)
 async def login(message: Message):
+
     global admin_mode
 
     if message.chat.type != ChatType.PRIVATE:
@@ -258,30 +260,35 @@ async def scooters(message: Message, state: FSMContext):
         return
 
     data = await state.get_data()
-
     added = 0
 
     for line in message.text.split("\n"):
         line = line.strip()
 
-        match = re.search(r"\d{3}-\d{3}", line)
+        match = re.search(r"(\d{3}-\d{3})\s*([✅❌])?", line)
         if not match:
             continue
 
-        scooter = match.group()
-        link = line.replace(scooter, "").strip()
+        scooter = match.group(1)
+        status = match.group(2) or ""
+        link = line.replace(match.group(0), "").strip()
 
         draft_tasks.append({
             "zone": data["zone"],
             "type": data["task_type"],
             "scooter": scooter,
             "link": link,
-            "status": ""
+            "status": status
         })
 
         added += 1
 
     await message.answer(f"Додано: {added}", reply_markup=final_keyboard())
+
+    # AUTO UPDATE EVERY 3
+    if len(draft_tasks) % 3 == 0:
+        await update_group()
+
     await state.clear()
 
 # =========================
@@ -327,7 +334,7 @@ async def delete(message: Message):
     await message.answer("Список видалено", reply_markup=admin_menu())
 
 # =========================
-# GROUP HANDLER (FINAL FIX)
+# GROUP HANDLER
 # =========================
 
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
@@ -344,11 +351,10 @@ async def group_handler(message: Message):
 
     updated = False
 
-    # 🔥 MULTI-LINE SUPPORT (FIX)
     for line in message.text.split("\n"):
         line = line.strip()
 
-        match = re.fullmatch(r"(\d{3}-\d{3})([✅❌])", line)
+        match = re.fullmatch(r"(\d{3}-\d{3})\s*([✅❌])", line)
         if not match:
             continue
 
@@ -361,9 +367,8 @@ async def group_handler(message: Message):
                 break
 
     if updated:
-        await asyncio.sleep(0.2)  # anti race-condition fix
+        await asyncio.sleep(0.2)
         await update_group()
-
 # =========================
 # MAIN
 # =========================
