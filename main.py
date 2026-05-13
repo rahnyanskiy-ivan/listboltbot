@@ -14,8 +14,6 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 
-from index import token
-
 # =========================
 # CONFIG
 # =========================
