@@ -36,6 +36,7 @@ TASK_MESSAGE_ID = None
 BOT_ID = None
 
 admin_mode = False
+live_counter = 0
 
 # =========================
 # FSM
@@ -132,7 +133,7 @@ def build_text(data):
     return text.strip()
 
 # =========================
-# CHECK ALL DONE
+# STATUS CHECK
 # =========================
 
 def is_all_done():
@@ -149,29 +150,18 @@ def is_all_done():
 # GROUP UPDATE
 # =========================
 
-async def update_group():
+async def update_group(force_new=False):
     global TASK_MESSAGE_ID
 
     base_text = build_text(tasks + draft_tasks)
 
-    # AUTO CLOSE
-    if tasks and is_all_done():
-
-        final_text = (
-            "@fir01, @F_E_2_1_N, список закритий!\n\n"
-            f"{base_text}\n\n"
-            "Всім дякую!"
-        )
-
-        if TASK_MESSAGE_ID:
-            try:
-                await bot.delete_message(GROUP_ID, TASK_MESSAGE_ID)
-            except:
-                pass
-
-        msg = await bot.send_message(GROUP_ID, final_text)
-        TASK_MESSAGE_ID = msg.message_id
-        return
+    # FORCE NEW MESSAGE (batch)
+    if force_new and TASK_MESSAGE_ID:
+        try:
+            await bot.delete_message(GROUP_ID, TASK_MESSAGE_ID)
+        except:
+            pass
+        TASK_MESSAGE_ID = None
 
     # FIRST MESSAGE
     if not TASK_MESSAGE_ID:
@@ -179,7 +169,7 @@ async def update_group():
         TASK_MESSAGE_ID = msg.message_id
         return
 
-    # EDIT MESSAGE
+    # EDIT MESSAGE (live mode)
     try:
         await bot.edit_message_text(
             chat_id=GROUP_ID,
@@ -254,6 +244,8 @@ async def task_type(message: Message, state: FSMContext):
 @dp.message(AdminStates.scooters)
 async def scooters(message: Message, state: FSMContext):
 
+    global live_counter
+
     if message.text == "⬅️ Назад":
         await message.answer("Оберіть тип:", reply_markup=type_keyboard())
         await state.set_state(AdminStates.task_type)
@@ -284,12 +276,19 @@ async def scooters(message: Message, state: FSMContext):
         added += 1
 
     await message.answer(f"Додано: {added}", reply_markup=final_keyboard())
-
-    # AUTO UPDATE EVERY 3
-    if len(draft_tasks) % 3 == 0:
-        await update_group()
-
     await state.clear()
+
+    live_counter += added
+
+    # LIVE UPDATE
+    if live_counter < 3:
+        await update_group(force_new=False)
+        return
+
+    # BATCH UPDATE (every 3)
+    if live_counter >= 3:
+        live_counter = 0
+        await update_group(force_new=True)
 
 # =========================
 # ADD MORE
@@ -307,10 +306,12 @@ async def add_more(message: Message, state: FSMContext):
 @dp.message(F.text == "🚀 Опублікувати")
 async def publish(message: Message):
 
-    global tasks, draft_tasks, admin_mode
+    global tasks, draft_tasks, admin_mode, live_counter
 
     tasks.extend(draft_tasks)
     draft_tasks.clear()
+
+    live_counter = 0
 
     await update_group()
 
@@ -325,11 +326,12 @@ async def publish(message: Message):
 @dp.message(F.text == "🗑 Видалити список")
 async def delete(message: Message):
 
-    global TASK_MESSAGE_ID
+    global TASK_MESSAGE_ID, live_counter
 
     tasks.clear()
     draft_tasks.clear()
     TASK_MESSAGE_ID = None
+    live_counter = 0
 
     await message.answer("Список видалено", reply_markup=admin_menu())
 
@@ -369,6 +371,7 @@ async def group_handler(message: Message):
     if updated:
         await asyncio.sleep(0.2)
         await update_group()
+
 # =========================
 # MAIN
 # =========================
