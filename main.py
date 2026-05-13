@@ -1,7 +1,7 @@
 import asyncio
 import re
-import os
 
+from index import token, id, password
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ChatType
 from aiogram.fsm.context import FSMContext
@@ -14,20 +14,18 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 
+from index import token
+
 # =========================
 # CONFIG
 # =========================
 
-TOKEN = os.getenv("TOKEN")
+TOKEN = token
+GROUP_ID = id
+ADMIN_PASSWORD = password
 
 bot = Bot(token=TOKEN)
-
 dp = Dispatcher(storage=MemoryStorage())
-
-async def main():
-    print("Bot started")
-    await dp.start_polling(bot)
-
 
 # =========================
 # DATA
@@ -118,7 +116,7 @@ def build_text(data):
         text += f"Зона {zone}\n"
 
         for ttype in zones[zone]:
-            text += f"👻 {ttype}\n"
+            text += f" {ttype}\n"
 
             for t in zones[zone][ttype]:
                 line = t["scooter"]
